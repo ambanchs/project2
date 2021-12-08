@@ -46,43 +46,85 @@ class_diag <- function(score, truth, positive, cutoff=.5){
 
 # Mining, Classification, Prediction
 
-## Name and EID here
+## Adriana Banchs, amb8722
 
 ### Introduction 
 
-Paragraph or two introducing your datasets and variables, why they are interesting to you, etc. See instructions for more information
+The Socio-Economic Country Profiles data set will be analyzed in this project. This data set was found on Kaggle, and it contains different measures for countries relating to the economy, health, employment, demographics, and more. Some of the variables included in this data set are the region, population, GDP, percent of labor force unemployed, age expectancy, and infant mortality rate. There are 12 variables in the final data set used and 229 countries. The binary variable of hemisphere was created for this data set, and there are 172 countries in the Eastern hemisphere and 57 countries in the Western hemisphere.
 
 ```{R}
 library(tidyverse)
-# read your datasets in here, e.g., with read_csv()
 
-# if your dataset needs tidying, do so here
+profile <- read_csv("profile.csv")
 
-# any other code here
+profile %>% separate(`Labour force participation (female/male pop. %)`, into=c("Laborforce_participation_women_%","Laborforce_participation_men_%"), sep="/") %>%
+  separate(`Life expectancy at birth (females/males, years)`, into=c("Lifeexpectancy_females_yrs", "Lifeexpectancy_males_yrs"), sep="/") %>% separate(`Population age distribution (0-14 / 60+ years, %)`, into=c("Pop_age_dist_0-14yrs_%", "Pop_age_dist_60+yrs_%")) %>% separate(`Pop. using improved drinking water (urban/rural, %)`, into=c("Pop_improveddrinkingwater_urban_%", "Pop_improveddrinkingwater_rural_%")) -> profile
+
+profile %>% rename(pop=`Population in thousands (2017)`, GDP=`GDP per capita (current US$)`, percent_unemployement=`Unemployment (% of labour force)`,  lifeex.f=Lifeexpectancy_females_yrs, lifeex.m=Lifeexpectancy_males_yrs, infmort=`Infant mortality rate (per 1000 live births`, physicians=`Health: Physicians (per 1000 pop.)`,seatswomen=`Seats held by women in national parliaments %`, co2=`CO2 emission estimates (million tons/tons per capita)`, pop_dens='Population density (per km2, 2017)', sa='Surface area (km2)', health_expenditure='Health: Total expenditure (% of GDP)') -> profile
+
+profile %>% na_if("...") %>% na_if("-99") %>% na_if("~0.0") -> profile
+
+profile %>% select(1:5,9,16,29,30,35,37,48) -> profileclean
+profileclean %>% mutate_at(3:12, as.numeric) -> profileclean
+profileclean %>% mutate(Hemisphere= ifelse(Region=="SouthernAsia"| Region=="South-easternAsia"| Region=="EasternAsia"| Region=="CentralAsia"| Region=="WesternAsia"| Region=="MiddleAfrica"| Region== "NorthernAfrica"| Region=="WesternAfrica"| Region=="EasternAfrica"| Region=="SouthernAfrica"| Region=="Oceania"| Region=="WesternEurope"| Region=="EasternEurope"| Region=="NorthernEurope" | Region=="SouthernEurope"| Region=="Polynesia" | Region=="Melanasia" | Region=="Micronesia"| Region=="Oceania", "Eastern", "Western")) -> profileclean
+
+profileclean %>% group_by(Hemisphere) %>% summarize(n=n())
+profileclean %>% head
 ```
 
 ### Cluster Analysis
 
 ```{R}
 library(cluster)
-# clustering code here
+clust_prof<-profileclean %>% select(3:12) %>% na.omit
+
+sil_width<-vector()
+for(i in 2:10){  
+  pam_fit2 <- pam(clust_prof, k = i)  
+  sil_width[i] <- pam_fit2$silinfo$avg.width  
+}
+ggplot()+geom_line(aes(x=1:10,y=sil_width))+scale_x_continuous(name="k",breaks=1:10)
+
+pam_profile <- clust_prof %>% pam(k=2)
+pam_profile
+
+library(GGally)
+pam_ggpairs<-clust_prof%>%mutate(cluster=as.factor(pam_profile$clustering))
+
+pam_ggpairs %>% ggpairs(cols=1:10, aes(color=cluster))
 ```
 
-Discussion of clustering here
+To perform this cluster analysis, the number of clusters was chosen based on the highest average silhouette width After plotting the silhouette widths for a k of 2 through 10, a k of 2 was chosen, since this gives the highest silhouette width of about 0.95. This value suggests that the clusters provide a strong structure. Based on the pam clustering output, it can be seen that the two medoids are most similar in their life expectancy variables, but most different in their percent unemployment, surface area, population, and CO2 emissions. Based on the ggpairs plot created, the clusters seem to overlap with most variables. However, there appears to be a larger difference in the surface area variable, with cluster 1 having a lower surface area and cluster 2 having a higher surface area. Additionally, the GDP of cluster 1 tends to be low, but the GDP of cluster 2 is spread out across low and high vaues. It is also evident of the high overlap in the life expectancy variables.
     
     
 ### Dimensionality Reduction with PCA
 
 ```{R}
-# PCA code here
+prof_numeric <- profileclean %>% select(is.numeric) %>% na.omit
+princomp(prof_numeric, cor=T) -> pca1
+summary(pca1, loadings=T)
+
+pca1$scores %>% as.data.frame() %>% bind_cols(prof_numeric) %>% select(PCA1=1, PCA2=2) ->pca_data
+pca_data %>% ggplot(aes(PCA1, PCA2)) + geom_point(size=4)
 ```
 
-Discussions of PCA here. 
+After running the principal component analysis, it can be seen above that the first principal component accounts for only about 40% of the variance. The first 2 principal components account for 62% of the variability, and the first 5 principal components account for 88% of variability. A high PCA1 means that a country has a low infant mortality rate and a high population density, GDP, life expectancy for women and men, and number of physicians per 1000 people. A high PCA2 means that a country has a high surface area, population and CO2 emissions, and a low percent of unemployment.
+
+From the scatterplot generated with PCA1 and PCA2, it can be observed that most countries have a low PCA2, although there are a few outliers. The countries are spread out across PCA1 scores however.
 
 ###  Linear Classifier
 
 ```{R}
-# linear classifier code here
+profileclean %>% select(13, 3:12) -> classdat
+
+logis_fit <- glm(Hemisphere=="Western" ~ ., data=classdat, family="binomial")
+prob_reg <- predict(logis_fit, type = "response")
+#class_diag(prob_reg, classdat$Hemisphere, positive="Western")
+
+#logis_fit <- glm(Legendary=="True" ~ Attack + HP, data=poke, family="binomial")
+
+#prob_reg <- predict(logistic_fit, type = "response")
+#class_diag(prob_reg, poke$Legendary, positive="True")
 ```
 
 ```{R}
@@ -121,13 +163,22 @@ Discussion
 
 ```{R}
 library(reticulate)
+use_python("/usr/bin/python3")
 ```
 
 ```{python}
-# python code here
+import numpy as np
+py_data = r.profileclean
+py_data['GDP']
 ```
 
-Discussion
+```{R}
+py$py_data %>% glimpse()
+py$py_data %>% data.frame() %>% select("GDP")
+```
+
+In this section, the 'profileclean' data frame was read into python and named as a NumPy array. Then, only the GDP values for all of the countries were printed out. After that, the new data frame created in Python was read into R Studio as a list, so it was converted into a data frame, and only the GDP values were selected.
+
 
 ### Concluding Remarks
 

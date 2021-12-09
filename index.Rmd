@@ -115,49 +115,115 @@ From the scatterplot generated with PCA1 and PCA2, it can be observed that most 
 ###  Linear Classifier
 
 ```{R}
-profileclean %>% select(13, 3:12) -> classdat
+profileclean %>% select(13, 3:12) %>% na.omit -> classdat
 
-logis_fit <- glm(Hemisphere=="Western" ~ ., data=classdat, family="binomial")
-prob_reg <- predict(logis_fit, type = "response")
-#class_diag(prob_reg, classdat$Hemisphere, positive="Western")
+logis_fit <- glm(Hemisphere=="Eastern" ~ ., data=classdat, family="binomial")
+prob_reg2 <- predict(logis_fit, type = "response")
+class_diag(prob_reg2,classdat$Hemisphere, positive="Eastern")
 
-#logis_fit <- glm(Legendary=="True" ~ Attack + HP, data=poke, family="binomial")
-
-#prob_reg <- predict(logistic_fit, type = "response")
-#class_diag(prob_reg, poke$Legendary, positive="True")
+y <- classdat$Hemisphere
+y_hat <- ifelse(prob_reg2>.5, "Eastern", "Western") 
+table(actual = y, predicted = y_hat) %>% addmargins
 ```
 
 ```{R}
-# cross-validation of linear classifier here
+set.seed(322)
+k=10
+
+data<-sample_frac(classdat)
+folds <- rep(1:k, length.out=nrow(data))
+
+diags<-NULL
+
+i=1
+for(i in 1:k){
+train<-data[folds!=i,] 
+test<-data[folds==i,] 
+truth<-test$Hemisphere
+
+fit <- glm(Hemisphere=="Eastern" ~  ., data=train, family = "binomial")
+
+probs <- predict(fit, newdata=test, type = "response")
+
+diags<-rbind(diags,class_diag(probs,truth,positive = "Eastern")) 
+}
+
+summarize_all(diags,mean)
 ```
 
-Discussion here
+First, logistic classification was performed to predict whether the countries in the data set are in the Western or Eastern hemisphere, using all of the numeric variables. The AUC for the linear classification is a 0.9167, which means this model is very good at making accurate predictions. A confusion matrix was then made to show how many countries were being classified correctly and incorrectly. For example, out of all of the countries in the Eastern hemisphere, about 96% of them were classified correctly. However, out of all of the countries in the Western hemisphere, only about 56% of them were classified correctly. The model does a much better job correctly classifying the Western countries.
+
+Then, a k-fold cross validation was performed to test how well this model performs when predicting out of a sample. The AUC for the cross validation dropped down to a 0.824, which suggests that there is overfitting in the logistic classification model.
 
 ### Non-Parametric Classifier
 
 ```{R}
 library(caret)
-# non-parametric classifier code here
+
+knn_fit <- knn3(Hemisphere=="Eastern" ~ ., data=classdat)
+prob_knn <- predict(knn_fit, newdata = classdat)[,2]
+class_diag(prob_knn, truth = classdat$Hemisphere, positive="Eastern")
+
+y_hat_knn <- predict(knn_fit,classdat)
+table(truth= factor(classdat$Hemisphere=="Eastern", levels=c("TRUE","FALSE")),
+      prediction= factor(y_hat_knn[,1]>.5, levels=c("TRUE","FALSE"))) %>% addmargins
+
 ```
 
 ```{R}
-# cross-validation of np classifier here
+set.seed(322)
+k=10
+
+data<-sample_frac(classdat)
+folds <- rep(1:k, length.out=nrow(data))
+
+diags<-NULL
+
+i=1
+for(i in 1:k){
+train<-data[folds!=i,] 
+test<-data[folds==i,] 
+truth<-test$Hemisphere
+
+fit <- knn3(Hemisphere=="Eastern" ~ ., data=train)
+
+probs<-predict(fit,newdata = test)[,2]
+
+diags<-rbind(diags,class_diag(probs,truth, positive = "Eastern")) }
+
+summarize_all(diags,mean)
 ```
 
-Discussion
+In this section, k-nearest-neighbor was used to predict the hemisphere based on all of the numeric variables. The AUC was calculated to be about 0.83, which means this model is decent at predicting the hemisphere of the different countries, but not as good as the logistic model. Then, a cross validation was run to test the model's predictions with a sample from the data set. The AUC for the cross validation is 0.47, which means there is a lot of overfitting, and the model predicts very poorly out-of-sample. This model performs much worse on new data than the logistic model.
 
 
 ### Regression/Numeric Prediction
 
 ```{R}
-# regression model code here
+fit<-lm(physicians~.,data=prof_numeric)
+yhat<-predict(fit)
+
+mean((prof_numeric$physicians-yhat)^2)
+
 ```
 
 ```{R}
-# cross-validation of regression model here
+set.seed(1234)
+k=5
+data<-prof_numeric[sample(nrow(prof_numeric)),]
+folds<-cut(seq(1:nrow(prof_numeric)),breaks=k,labels=F)
+diags<-NULL
+for(i in 1:k){
+  train<-data[folds!=i,]
+  test<-data[folds==i,]
+  fit<-lm(physicians~.,data=train)
+  yhat<-predict(fit,newdata=test)
+  diags<-mean((test$physicians-yhat)^2) 
+}
+mean(diags)
 ```
 
-Discussion
+In this part of the project, a linear regression model was made to predict how many physicians a country has per 1000 people. The mean squared error (MSE) for the entire dataset was calculated to be 0.98. When a cross validation was run on this model, the MSE was calculated to be about 0.96. Since the MSE for the cross validation is less than the MSE for the entire data set, there is no evidence of overfitting.
 
 ### Python 
 
@@ -167,7 +233,6 @@ use_python("/usr/bin/python3")
 ```
 
 ```{python}
-import numpy as np
 py_data = r.profileclean
 py_data['GDP']
 ```
@@ -178,11 +243,6 @@ py$py_data %>% data.frame() %>% select("GDP")
 ```
 
 In this section, the 'profileclean' data frame was read into python and named as a NumPy array. Then, only the GDP values for all of the countries were printed out. After that, the new data frame created in Python was read into R Studio as a list, so it was converted into a data frame, and only the GDP values were selected.
-
-
-### Concluding Remarks
-
-Include concluding remarks here, if any
 
 
 

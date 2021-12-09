@@ -1683,44 +1683,242 @@ pca_data %&gt;% ggplot(aes(PCA1, PCA2)) + geom_point(size = 4)</code></pre>
 </div>
 <div id="linear-classifier" class="section level3">
 <h3>Linear Classifier</h3>
-<pre class="r"><code>classdat &lt;- profileclean %&gt;% select(13, 3:12)
+<pre class="r"><code>classdat &lt;- profileclean %&gt;% select(13, 3:12) %&gt;% na.omit
 
-logis_fit &lt;- glm(Hemisphere == &quot;Western&quot; ~ ., data = classdat, 
+logis_fit &lt;- glm(Hemisphere == &quot;Eastern&quot; ~ ., data = classdat, 
     family = &quot;binomial&quot;)
-prob_reg &lt;- predict(logis_fit, type = &quot;response&quot;)
-# class_diag(prob_reg, classdat$Hemisphere,
-# positive=&#39;Western&#39;)
+prob_reg2 &lt;- predict(logis_fit, type = &quot;response&quot;)
+class_diag(prob_reg2, classdat$Hemisphere, positive = &quot;Eastern&quot;)</code></pre>
+<pre><code>##            acc   sens   spec    ppv     f1    ba    auc
+## Metrics 0.9043 0.9596 0.5625 0.9314 0.9453 0.761 0.9167</code></pre>
+<pre class="r"><code>y &lt;- classdat$Hemisphere
+y_hat &lt;- ifelse(prob_reg2 &gt; 0.5, &quot;Eastern&quot;, &quot;Western&quot;)
+table(actual = y, predicted = y_hat) %&gt;% addmargins</code></pre>
+<pre><code>##          predicted
+## actual    Eastern Western Sum
+##   Eastern      95       4  99
+##   Western       7       9  16
+##   Sum         102      13 115</code></pre>
+<pre class="r"><code>set.seed(322)
+k = 10
 
-# logis_fit &lt;- glm(Legendary==&#39;True&#39; ~ Attack + HP,
-# data=poke, family=&#39;binomial&#39;)
+data &lt;- sample_frac(classdat)
+folds &lt;- rep(1:k, length.out = nrow(data))
 
-# prob_reg &lt;- predict(logistic_fit, type = &#39;response&#39;)
-# class_diag(prob_reg, poke$Legendary, positive=&#39;True&#39;)</code></pre>
-<pre class="r"><code># cross-validation of linear classifier here</code></pre>
-<p>Discussion here</p>
+diags &lt;- NULL
+
+i = 1
+for (i in 1:k) {
+    train &lt;- data[folds != i, ]
+    test &lt;- data[folds == i, ]
+    truth &lt;- test$Hemisphere
+    
+    fit &lt;- glm(Hemisphere == &quot;Eastern&quot; ~ ., data = train, family = &quot;binomial&quot;)
+    
+    probs &lt;- predict(fit, newdata = test, type = &quot;response&quot;)
+    
+    diags &lt;- rbind(diags, class_diag(probs, truth, positive = &quot;Eastern&quot;))
+}
+
+summarize_all(diags, mean)</code></pre>
+<pre><code>##       acc    sens spec     ppv      f1     ba     auc
+## 1 0.87045 0.93142 0.55 0.92071 0.92338 0.7407 0.82377</code></pre>
+<p>First, logistic classification was performed to predict whether the countries in the data set are in the Western or Eastern hemisphere, using all of the numeric variables. The AUC for the linear classification is a 0.9167, which means this model is very good at making accurate predictions. A confusion matrix was then made to show how many countries were being classified correctly and incorrectly. For example, out of all of the countries in the Eastern hemisphere, about 96% of them were classified correctly. However, out of all of the countries in the Western hemisphere, only about 56% of them were classified correctly. The model does a much better job correctly classifying the Western countries.</p>
+<p>Then, a k-fold cross validation was performed to test how well this model performs when predicting out of a sample. The AUC for the cross validation dropped down to a 0.824, which suggests that there is overfitting in the logistic classification model.</p>
 </div>
 <div id="non-parametric-classifier" class="section level3">
 <h3>Non-Parametric Classifier</h3>
 <pre class="r"><code>library(caret)
-# non-parametric classifier code here</code></pre>
-<pre class="r"><code># cross-validation of np classifier here</code></pre>
-<p>Discussion</p>
+
+knn_fit &lt;- knn3(Hemisphere == &quot;Eastern&quot; ~ ., data = classdat)
+prob_knn &lt;- predict(knn_fit, newdata = classdat)[, 2]
+class_diag(prob_knn, truth = classdat$Hemisphere, positive = &quot;Eastern&quot;)</code></pre>
+<pre><code>##            acc   sens   spec    ppv     f1     ba    auc
+## Metrics 0.8609 0.9697 0.1875 0.8807 0.9231 0.5786 0.8302</code></pre>
+<pre class="r"><code>y_hat_knn &lt;- predict(knn_fit, classdat)
+table(truth = factor(classdat$Hemisphere == &quot;Eastern&quot;, levels = c(&quot;TRUE&quot;, 
+    &quot;FALSE&quot;)), prediction = factor(y_hat_knn[, 1] &gt; 0.5, levels = c(&quot;TRUE&quot;, 
+    &quot;FALSE&quot;))) %&gt;% addmargins</code></pre>
+<pre><code>##        prediction
+## truth   TRUE FALSE Sum
+##   TRUE     3    96  99
+##   FALSE    3    13  16
+##   Sum      6   109 115</code></pre>
+<pre class="r"><code>set.seed(322)
+k = 10
+
+data &lt;- sample_frac(classdat)
+folds &lt;- rep(1:k, length.out = nrow(data))
+
+diags &lt;- NULL
+
+i = 1
+for (i in 1:k) {
+    train &lt;- data[folds != i, ]
+    test &lt;- data[folds == i, ]
+    truth &lt;- test$Hemisphere
+    
+    fit &lt;- knn3(Hemisphere == &quot;Eastern&quot; ~ ., data = train)
+    
+    probs &lt;- predict(fit, newdata = test)[, 2]
+    
+    diags &lt;- rbind(diags, class_diag(probs, truth, positive = &quot;Eastern&quot;))
+}
+
+summarize_all(diags, mean)</code></pre>
+<pre><code>##       acc    sens spec     ppv      f1      ba     auc
+## 1 0.84395 0.96869 0.05 0.86466 0.91194 0.50933 0.47414</code></pre>
+<p>In this section, k-nearest-neighbor was used to predict the hemisphere based on all of the numeric variables. The AUC was calculated to be about 0.83, which means this model is decent at predicting the hemisphere of the different countries, but not as good as the logistic model. Then, a cross validation was run to test the model’s predictions with a sample from the data set. The AUC for the cross validation is 0.47, which means there is a lot of overfitting, and the model predicts very poorly out-of-sample. This model performs much worse on new data than the logistic model.</p>
 </div>
 <div id="regressionnumeric-prediction" class="section level3">
 <h3>Regression/Numeric Prediction</h3>
-<pre class="r"><code># regression model code here</code></pre>
-<pre class="r"><code># cross-validation of regression model here</code></pre>
-<p>Discussion</p>
+<pre class="r"><code>fit &lt;- lm(physicians ~ ., data = prof_numeric)
+yhat &lt;- predict(fit)
+
+mean((prof_numeric$physicians - yhat)^2)</code></pre>
+<pre><code>## [1] 0.9089502</code></pre>
+<pre class="r"><code>set.seed(1234)
+k = 5
+data &lt;- prof_numeric[sample(nrow(prof_numeric)), ]
+folds &lt;- cut(seq(1:nrow(prof_numeric)), breaks = k, labels = F)
+diags &lt;- NULL
+for (i in 1:k) {
+    train &lt;- data[folds != i, ]
+    test &lt;- data[folds == i, ]
+    fit &lt;- lm(physicians ~ ., data = train)
+    yhat &lt;- predict(fit, newdata = test)
+    diags &lt;- mean((test$physicians - yhat)^2)
+}
+mean(diags)</code></pre>
+<pre><code>## [1] 0.9598304</code></pre>
+<p>In this part of the project, a linear regression model was made to predict how many physicians a country has per 1000 people. The mean squared error (MSE) for the entire dataset was calculated to be 0.98. When a cross validation was run on this model, the MSE was calculated to be about 0.96. Since the MSE for the cross validation is less than the MSE for the entire data set, there is no evidence of overfitting.</p>
 </div>
 <div id="python" class="section level3">
 <h3>Python</h3>
-<pre class="r"><code>library(reticulate)</code></pre>
-<pre class="python"><code># python code here</code></pre>
-<p>Discussion</p>
-</div>
-<div id="concluding-remarks" class="section level3">
-<h3>Concluding Remarks</h3>
-<p>Include concluding remarks here, if any</p>
+<pre class="r"><code>library(reticulate)
+use_python(&quot;/usr/bin/python3&quot;)</code></pre>
+<pre class="python"><code>py_data = r.profileclean
+py_data[&#39;GDP&#39;]</code></pre>
+<pre><code>## [623.2, 3984.2, 4154.1, nan, 39896.4, 4714.1, 21879.6, 14764.5, 14564.5, 3489.1, 26005.4, 51352.2, 44117.7, 5438.7, 22817.2, 22600.2, 1207.9, 15429.4, 5750.8, 40277.8, 4789.4, 779.1, 94399.9, 2677.1, 3076.8, nan, 4265.0, 6360.6, 8528.3, 30144.5, 30552.7, 6846.8, 611.1, 244.6, 3080.2, 1158.7, 1217.3, 43205.6, 62132.0, 333.2, 713.0, nan, 13416.2, 42431.0, 78586.4, 8109.1, 6056.1, 1368.9, 1838.1, 14118.7, 11015.0, 11479.4, 7656.6, 21941.9, 17561.7, 648.0, 486.2, 53149.3, 1956.3, 7051.1, 6373.6, 6205.1, 3452.3, 4219.4, 16344.1, 914.9, 17112.0, 602.8, nan, nan, 4921.9, 42148.1, 36304.2, nan, 18161.0, 7960.7, 473.2, 3491.4, 41686.2, 1355.6, nan, 17788.0, 36976.7, 8933.8, nan, nan, 3903.5, 530.0, 703.9, 4278.8, 793.7, nan, 2521.9, 12350.6, 50936.0, 1614.2, 3346.5, 5038.1, 4509.0, 60513.6, nan, 37129.4, 30462.4, 5105.8, 34628.7, 4940.1, 10312.1, 1376.7, 1442.9, 29303.9, 1106.4, 1850.2, 13704.1, 8571.4, 940.6, 455.9, 5488.2, 169491.8, 14383.7, 100160.8, 401.8, 372.9, 9768.4, 9446.5, 744.3, 23280.7, 3452.6, nan, 1235.0, 9040.9, nan, 8980.9, 3015.2, 165870.6, 3973.4, 6424.1, 11553.4, 2919.3, 529.2, 1161.5, 4673.6, 18469.2, 724.5, 44332.1, 33965.7, 38294.3, 2086.9, 359.0, 2714.5, nan, nan, 74185.5, 15550.8, 1410.4, 12122.5, 13268.1, 2797.6, 4174.4, 6069.1, 2904.2, 12355.5, 19239.2, 27939.0, 73653.4, 27396.7, 1591.4, 9120.7, 9243.3, 697.3, nan, 15771.9, 7839.4, nan, 6739.2, 4006.0, 49240.2, 1752.8, 20710.6, 901.1, 5238.6, 14133.2, 694.8, 52239.0, 28241.7, 16082.5, 20689.8, 1841.6, 144.5, 5773.0, 1067.0, 25865.4, 3973.7, 2715.5, 1977.0, 8985.3, 3211.7, 50687.5, 80831.1, 1534.5, 925.9, 5814.8, 4836.1, 2425.4, 559.4, nan, 3784.5, 19062.9, 3660.9, 9125.8, 6996.7, 25121.8, 3362.4, 647.7, 2021.6, 40438.8, 44162.4, 877.3, 56053.8, nan, 15573.8, 2308.3, 2783.0, 11068.9, 2067.9, nan, nan, 1106.4, 1311.1, 890.4]</code></pre>
+<pre class="r"><code>py$py_data %&gt;% glimpse()</code></pre>
+<pre><code>## List of 13
+##  $ country              : chr [1:229] &quot;Afghanistan&quot; &quot;Albania&quot; &quot;Algeria&quot; &quot;American Samoa&quot; ...
+##  $ Region               : chr [1:229] &quot;SouthernAsia&quot; &quot;SouthernEurope&quot; &quot;NorthernAfrica&quot; &quot;Polynesia&quot; ...
+##  $ sa                   : num [1:229] 652864 28748 2381741 199 468 ...
+##  $ pop                  : num [1:229] 35530 2930 41318 56 77 ...
+##  $ pop_dens             : num [1:229] 54.4 106.9 17.3 278.2 163.8 ...
+##  $ GDP                  : num [1:229] 623 3984 4154 NA 39896 ...
+##  $ percent_unemployement: num [1:229] 8.6 15.8 11.4 NA NA 6.6 NA NA 6.5 16.6 ...
+##  $ lifeex.f             : num [1:229] 63.5 79.9 76.5 77.8 NA 63 NA 78.2 79.8 77 ...
+##  $ lifeex.m             : num [1:229] 61 75.6 74.1 71.1 NA 57.4 NA 73.3 72.2 70.6 ...
+##  $ infmort              : num [1:229] 68.6 14.6 27.7 9.6 NA 65.4 NA 9.1 13.7 13.2 ...
+##  $ physicians           : num [1:229] 0.3 1.3 NA NA 3.7 NA NA NA 3.8 2.8 ...
+##  $ co2                  : num [1:229] 63 84 5900 NA 1 ...
+##  $ Hemisphere           : chr [1:229] &quot;Eastern&quot; &quot;Eastern&quot; &quot;Eastern&quot; &quot;Eastern&quot; ...</code></pre>
+<pre class="r"><code>py$py_data %&gt;% data.frame() %&gt;% select(&quot;GDP&quot;)</code></pre>
+<pre><code>##         GDP
+## 1     623.2
+## 2    3984.2
+## 3    4154.1
+## 4        NA
+## 5   39896.4
+## 6    4714.1
+## 7   21879.6
+## 8   14764.5
+## 9   14564.5
+## 10   3489.1
+## 11  26005.4
+## 12  51352.2
+## 13  44117.7
+## 14   5438.7
+## 15  22817.2
+## 16  22600.2
+## 17   1207.9
+## 18  15429.4
+## 19   5750.8
+## 20  40277.8
+## 21   4789.4
+## 22    779.1
+## 23  94399.9
+## 24   2677.1
+## 25   3076.8
+## 26       NA
+## 27   4265.0
+## 28   6360.6
+## 29   8528.3
+## 30  30144.5
+## 31  30552.7
+## 32   6846.8
+## 33    611.1
+## 34    244.6
+## 35   3080.2
+## 36   1158.7
+## 37   1217.3
+## 38  43205.6
+## 39  62132.0
+## 40    333.2
+## 41    713.0
+## 42       NA
+## 43  13416.2
+## 44  42431.0
+## 45  78586.4
+## 46   8109.1
+## 47   6056.1
+## 48   1368.9
+## 49   1838.1
+## 50  14118.7
+## 51  11015.0
+## 52  11479.4
+## 53   7656.6
+## 54  21941.9
+## 55  17561.7
+## 56    648.0
+## 57    486.2
+## 58  53149.3
+## 59   1956.3
+## 60   7051.1
+## 61   6373.6
+## 62   6205.1
+## 63   3452.3
+## 64   4219.4
+## 65  16344.1
+## 66    914.9
+## 67  17112.0
+## 68    602.8
+## 69       NA
+## 70       NA
+## 71   4921.9
+## 72  42148.1
+## 73  36304.2
+## 74       NA
+## 75  18161.0
+## 76   7960.7
+## 77    473.2
+## 78   3491.4
+## 79  41686.2
+## 80   1355.6
+## 81       NA
+## 82  17788.0
+## 83  36976.7
+## 84   8933.8
+## 85       NA
+## 86       NA
+## 87   3903.5
+## 88    530.0
+## 89    703.9
+## 90   4278.8
+## 91    793.7
+## 92       NA
+## 93   2521.9
+## 94  12350.6
+## 95  50936.0
+## 96   1614.2
+## 97   3346.5
+## 98   5038.1
+## 99   4509.0
+## 100 60513.6
+##  [ reached &#39;max&#39; / getOption(&quot;max.print&quot;) -- omitted 129 rows ]</code></pre>
+<p>In this section, the ‘profileclean’ data frame was read into python and named as a NumPy array. Then, only the GDP values for all of the countries were printed out. After that, the new data frame created in Python was read into R Studio as a list, so it was converted into a data frame, and only the GDP values were selected.</p>
 </div>
 </div>
 </div>
